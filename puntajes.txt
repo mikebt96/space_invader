@@ -1,4 +1,0 @@
-Puntaje23,10
-Puntaje23,10
-David,12
-dAVID 2,15
