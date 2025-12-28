@@ -1,127 +1,80 @@
 import pygame
-import sys
-import os
-from ShipClass import Ship
-from EnemyClass import Enemy
-from BulletClass import Bullet
+from pygame.math import Vector2
 
-def cargar_imagen(nombre_archivo):
-    # Ruta base para PyInstaller o entorno de desarrollo
-    ruta_base = getattr(sys, '_MEIPASS', os.path.dirname(os.path.abspath(__file__)))
-    ruta = os.path.join(ruta_base, 'img', nombre_archivo)
-    return pygame.image.load(ruta)
-
-# Carga de imágenes utilizando la función modificada
-PLAYER_IMAGE = cargar_imagen('player_image.png')
-BULLET_IMAGE = cargar_imagen('bullet_image.png')
-
-HEIGHT = 600
-WIDTH = 800
-
-class Player(Ship):
-    def __init__(self, x, y, x_speed, y_speed, health=100):
-        super().__init__(x, y, health)
-        self.x_speed = x_speed
-        self.y_speed = y_speed
-        self.ship_img = PLAYER_IMAGE
-        self.bullet_img = BULLET_IMAGE
-        self.bullet_speed = -10
-        self.max_health = health
-        self.mask = pygame.mask.from_surface(self.ship_img)
-        self.creation_cooldown_counter = 0
-        self.max_amount_bullets = 3
-        self.bullets = []
-        self.bullet_cooldown_counter = 0
+class Player(pygame.sprite.Sprite):
+    def __init__(self, x, y, img, bullet_group, bullet_img):
+        super().__init__()
+        self.original_image = img 
+        self.image = img
+        self.rect = self.image.get_rect(center=(x, y))
+        self.pos = Vector2(x, y)
         
-    def move(self):
+        # Física
+        self.vel = Vector2(0, 0)
+        self.acc = Vector2(0, 0)
+        self.max_speed = 450
+        self.acceleration = 2200
+        self.friction = 1800
+        
+        # Efecto Banking (Fake 3D)
+        self.tilt_factor = 1.0        
+        self.target_tilt = 1.0
+        
+        # Disparo
+        self.bullet_group = bullet_group
+        self.bullet_img = bullet_img 
+        self.cooldown_timer = 0
+        self.COOLDOWN_TIME = 250
+
+    def input(self):
         keys = pygame.key.get_pressed()
-        if (keys[pygame.K_UP] or keys[pygame.K_w]) and (self.y > 0):
-            self.y -= self.y_speed
-        elif (keys[pygame.K_DOWN] or keys[pygame.K_s]) and (self.y < HEIGHT-self.ship_img.get_height()-60):
-            self.y += self.y_speed
-        elif (keys[pygame.K_RIGHT] or keys[pygame.K_d]) and (self.x < WIDTH - self.ship_img.get_width()):
-            self.x += self.x_speed
-        elif (keys[pygame.K_LEFT] or keys[pygame.K_a]) and (self.x > 0):
-            self.x -= self.x_speed
+        self.acc = Vector2(0, 0)
+        self.target_tilt = 1.0 # Vuelve a la normalidad si no hay teclas
 
-    def increase_speed(self):
-        if self.x_speed < 10:
-            self.x_speed += 1.25
-            self.y_speed += 1.25
-        elif self.x_speed >= 10:
-            self.x_speed = 10
-            self.y_speed = 10
-        if self.cool_down > 25:
-            self.cool_down *= 0.9
-    
-    def create_bullets(self):
-        if (len(self.bullets) < self.max_amount_bullets) and (self.creation_cooldown_counter == 0):
-            bullet = Bullet(self.x, self.y, self.bullet_img)
-            self.bullets.append(bullet)
-            self.creation_cooldown_counter = 1
-        for bullet in self.fired_bullets:
-            if bullet.y <= -40:
-                self.fired_bullets.pop(0)
+        if keys[pygame.K_a] or keys[pygame.K_LEFT]:
+            self.acc.x = -self.acceleration
+            self.target_tilt = 0.6 # Se inclina
+        if keys[pygame.K_d] or keys[pygame.K_RIGHT]:
+            self.acc.x = self.acceleration
+            self.target_tilt = 0.6
+        if keys[pygame.K_w] or keys[pygame.K_UP]:
+            self.acc.y = -self.acceleration
+        if keys[pygame.K_s] or keys[pygame.K_DOWN]:
+            self.acc.y = self.acceleration
             
-    def cooldown(self):
-        if self.bullet_cooldown_counter >= 20:
-            self.bullet_cooldown_counter = 0
-        elif self.bullet_cooldown_counter > 0:
-            self.bullet_cooldown_counter += 1
-          
-        if self.creation_cooldown_counter >= 20:
-            self.creation_cooldown_counter = 0
-        elif self.creation_cooldown_counter > 0:
-            self.creation_cooldown_counter += 1    
+        if keys[pygame.K_SPACE]:
+            self.shoot()
 
-    def fire(self, window):
-        keys = pygame.key.get_pressed()
-        if (keys[pygame.K_SPACE]) and (len(self.bullets) > 0) and (self.bullet_cooldown_counter == 0):
-            self.bullets[-1].x = self.x + (self.ship_img.get_width() - self.bullet_img.get_width()) / 2
-            self.bullets[-1].y = self.y + 10
-            self.fired_bullets.append(self.bullets.pop())
-            self.bullet_cooldown_counter = 1
-            self.creation_cooldown_counter = 1
-            
-        for i in range(len(self.fired_bullets)):
-            self.fired_bullets[i].move(self.bullet_speed)
-            self.fired_bullets[i].draw(window)
+    def shoot(self):
+        now = pygame.time.get_ticks()
+        if now - self.cooldown_timer > self.COOLDOWN_TIME:
+            from BulletClass import Bullet
+            new_bullet = Bullet(self.rect.centerx, self.rect.top, self.bullet_img) 
+            self.bullet_group.add(new_bullet)
+            self.cooldown_timer = now
 
-    def hit(self, enemy):
-        for i in range(len(self.fired_bullets)):
-            self.creation_cooldown_counter = self.cool_down * 0.8
-            return self.fired_bullets[i].collision(enemy)
-    
-
-def main():
-    pygame.init()
-    screen = pygame.display.set_mode((WIDTH, HEIGHT))
-    clock = pygame.time.Clock()
-    
-    player = Player(WIDTH/2, HEIGHT-100, 5, 5)
-    
-    enemies = Enemy(2).create(5)
-    
-    running = True
-    
-    while running:
-        screen.fill((0, 0, 0))
-        for event in pygame.event.get():
-            if event.type == pygame.QUIT:
-                running = False
-        player.create_bullets()
-        player.cooldown()
-        player.move()
-        player.fire(screen)
+    def update(self, dt, width, height):
+        self.input()
         
-        for enemy in enemies:
-            enemy.move()
-            screen.blit(enemy.ship_img, (enemy.x, enemy.y))
+        # Aplicar Banking suave
+        self.tilt_factor += (self.target_tilt - self.tilt_factor) * 0.1
+        nw = int(self.original_image.get_width() * self.tilt_factor)
+        self.image = pygame.transform.smoothscale(self.original_image, (nw, self.original_image.get_height()))
         
-        screen.blit(player.ship_img, (player.x, player.y))
-        pygame.display.flip()
-        clock.tick(60)
-    pygame.quit()
-    sys.exit()
+        # Aplicar Fricción
+        if self.acc.length_squared() == 0 and self.vel.length() > 0:
+            friction_force = -self.vel.normalize() * self.friction
+            self.acc += friction_force
 
-#main()
+        # Integración Física
+        self.vel += self.acc * dt
+        if self.vel.length() > self.max_speed:
+            self.vel.scale_to_length(self.max_speed)
+        self.pos += self.vel * dt
+        
+        # Límites de pantalla
+        self.pos.x = max(0, min(self.pos.x, width - self.rect.width))
+        self.pos.y = max(0, min(self.pos.y, height - self.rect.height))
+        
+        self.rect.topleft = self.pos
+        self.acc = Vector2(0, 0)

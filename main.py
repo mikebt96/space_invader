@@ -1,127 +1,87 @@
 import pygame
-from pygame import mixer
-from GameClass import Game
-import os
 import sys
-from PlayerClass import Player
-from EnemyClass import Enemy
-from DrawingClass import Drawing
-from PantallaNombreClass import PantallaNombre
-from MenuPrincipalClass import MenuPrincipal
-from AcercaDeMenuClass import MenuAcercaDe
-from MenuPuntajesClass import MenuPuntajes
+import os
+from GameClass import Game
 
-# Obtener la ruta del directorio del script o del bundle
-base_path = getattr(sys, '_MEIPASS', os.path.dirname(__file__))
+WIDTH, HEIGHT = 800, 600
 
-BACKGROUND = pygame.image.load(os.path.join(base_path, 'img', 'background.png'))
-ICON_IMAGE = pygame.image.load(os.path.join(base_path, 'img', 'title_icon.png'))
-TITLE = 'Space Invaders Hybridge'
+# Esta es la función que causó el error, ahora está unificada
+def get_path(*parts):
+    base = os.path.dirname(os.path.abspath(__file__))
+    return os.path.join(base, *parts)
 
-PLAYER_IMAGE = pygame.image.load(os.path.join(base_path, 'img', 'player_image.png'))
-BULLET_IMAGE = pygame.image.load(os.path.join(base_path, 'img', 'bullet_image.png'))
-
-pygame.init()
-
-WIDTH, HEIGTH = 800, 600
-WIN = pygame.display.set_mode((WIDTH, HEIGTH))
-pygame.display.set_caption(TITLE)
-pygame.display.set_icon(ICON_IMAGE)
-
-try:
-    mixer.music.load(os.path.join(base_path, 'sounds', 'background_song1.mp3'))
-except:
-    print("No se pudo cargar el sonido")
-    pass
-
-def main():
-    puntaje = 0
-    run = True
-    clock = pygame.time.Clock()
-    FPS = 60
+def load_assets():
+    a = {}
     try:
-        mixer.music.play(-1)
-    except:
-        pass
+        # --- IMÁGENES ---
+        a['bg'] = pygame.image.load(get_path('img', 'background.png')).convert()
+        a['player'] = pygame.image.load(get_path('img', 'player_image.png')).convert_alpha()
+        a['bullet'] = pygame.image.load(get_path('img', 'bullet_image.png')).convert_alpha()
+        a['e_blue'] = pygame.image.load(get_path('img', 'enemy_blue_image.png')).convert_alpha()
+        a['e_green'] = pygame.image.load(get_path('img', 'enemy_green_image.png')).convert_alpha()
+        a['e_purple'] = pygame.image.load(get_path('img', 'enemy_purple_image.png')).convert_alpha()
+        a['s_blue'] = pygame.image.load(get_path('img', 'shot_blue.png')).convert_alpha()
+        a['s_green'] = pygame.image.load(get_path('img', 'shot_green.png')).convert_alpha()
+        a['s_purple'] = pygame.image.load(get_path('img', 'shot_purple.png')).convert_alpha()
+        
+        # --- AUDIO ---
+        # Efecto de explosión
+        a['sfx_explosion'] = pygame.mixer.Sound(get_path('sounds', 'explosion.wav'))
+        
+        # MÚSICA DE FONDO (Corregido a background_song.mp3)
+        pygame.mixer.music.load(get_path('sounds', 'background_song.mp3'))
+        a['music_loaded'] = True
+        
+        print("✅ Todo cargado correctamente: Imágenes y background_song.mp3")
+        
+    except Exception as e:
+        print(f"⚠️ Nota: No se pudo cargar algún recurso: {e}")
+        # Si falló la música pero las imágenes están bien, permitimos seguir
+        if 'bg' not in a:
+            return None
+        a['music_loaded'] = a.get('music_loaded', False)
+        
+    return a
+    
+def main():
+    # Inicialización del audio con settings de baja latencia
+    pygame.mixer.pre_init(44100, -16, 2, 512)
+    pygame.init()
+    pygame.mixer.init()
+    
+    WIN = pygame.display.set_mode((WIDTH, HEIGHT))
+    pygame.display.set_caption("Space Antigravity 2026")
+    clock = pygame.time.Clock()
+    
+    assets = load_assets()
+    
+    # Si los assets no se cargaron, cerramos para no dar errores de música
+    if assets is None:
+        print("El juego no puede iniciar sin los archivos de imagen o sonido.")
+        pygame.quit()
+        sys.exit()
+    
+    # Iniciar música de fondo
+    pygame.mixer.music.set_volume(0.5)
+    pygame.mixer.music.play(-1)
+    
+    game = Game(WIN, assets, WIDTH, HEIGHT)
 
-    font = pygame.font.SysFont('comicsans', 50)
-    game = Game(font, FPS, 3, WIN, WIDTH, HEIGTH, 0, clock)
-
-    player_x = (WIDTH - PLAYER_IMAGE.get_width()) / 2
-    player_y = 480
-    player = Player(x=player_x, y=player_y, x_speed=5, y_speed=4)
-
-    enemy_init = Enemy(speed=6)
-    enemy_wave = 100
-    enemies = enemy_init.create(enemy_wave)
-
-    draw = Drawing(WIN)
-    draw.drawing(game, player, enemies, FPS=60, puntos=puntaje)
-
-    while run:
-        clock.tick(FPS)
-
-        if game.over():
-            if puntaje > game.max_pun:
-                sound = pygame.mixer.Sound(os.path.join(base_path, "sounds", "ganar.mp3"))
-                sound.play()
-                pantalla = PantallaNombre(puntaje, menu_principal)
+    while True:
+        dt = clock.tick(60) / 1000.0
+        events = pygame.event.get()
+        
+        for event in events:
+            if event.type == pygame.QUIT:
                 pygame.quit()
-            else:
-                menu_principal()
-                run = False
-            continue
+                sys.exit()
+            
+            # Gestión de entradas para menús
+            game.handle_input(event)
 
-        if game.escape():
-            run = False
-            continue
+        game.update(dt)
+        game.draw()
+        pygame.display.flip()
 
-        if len(enemies) == 0:
-            game.level += 1
-            enemy_wave += 1
-            enemy.increase_speed()
-            player.increase_speed()
-            enemies = enemy.create(amount=enemy_wave)
-            if game.level % 3 == 0:
-                if player.max_amount_bullets < 10:
-                    player.max_amount_bullets += 1
-                if game.lives < 6:
-                    game.lives += 1
-
-        player.move()
-        player.create_bullets()
-        game.reload_bullet(len(player.bullets))
-        player.cooldown()
-
-        for enemy in enemies:
-            enemy.move()
-            if player.hit(enemy):
-                enemies.remove(enemy)
-                player.fired_bullets.pop(0)
-                crash_sound = pygame.mixer.Sound(os.path.join(base_path, "sounds", "explosion.wav"))
-                pygame.mixer.Sound.play(crash_sound)
-                puntaje += 1
-            if enemy.y + enemy.get_height() >= HEIGTH:
-                game.lives -= 1
-                enemies.remove(enemy)
-
-        draw.drawing(game, player, enemies, FPS, puntaje)
-
-def initGame():
+if __name__ == "__main__":
     main()
-
-def initPuntaje():
-    menu_puntajes = MenuPuntajes(menu_principal).ejecutar()
-
-def initAbout():
-    menu_acercade = MenuAcercaDe(menu_principal).ejecutar()
-
-def menu_principal():
-    print("menu principal")
-    menu_principal = MenuPrincipal(initGame, initPuntaje, initAbout).menu_principal()
-
-menu_principal()
-
-
-
-

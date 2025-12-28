@@ -1,18 +1,16 @@
 import pygame
 
-class Bullet:
-    
-    def __init__(self, x,y,img):
-        self.y = y
-        self.x = x
-        self.img = img
-        self.mask = pygame.mask.from_surface(self.img)
-    def draw(self,window):
-        window.blit(self.img,(self.x,self.y))
-    def move(self,speed):
-        self.y += speed
-    
-    def collision(self, obj):
-        offset = (int(self.x-obj.x-30), int(self.y - obj.y -20))
+class Bullet(pygame.sprite.Sprite):
+    def __init__(self, x, y, img):
+        super().__init__()
+        self.image = img
+        self.rect = self.image.get_rect(center=(x, y))
+        self.speed = -600 # Velocidad negativa para ir hacia arriba
+
+    def update(self, dt):
+        # Movimiento independiente de los FPS
+        self.rect.y += self.speed * dt
         
-        return self.mask.overlap(obj.mask,(offset))
+        # Eliminar del juego si sale de la pantalla para no consumir RAM
+        if self.rect.bottom < 0:
+            self.kill()
